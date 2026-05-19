@@ -7,9 +7,6 @@
 class ParkingSpot {
   final String id;
   final String status;   // "available" | "occupied" | "reserved"
-  final int    floor;
-  final String id;       // e.g. "B3"
-  final String status;   // "available" | "occupied" | "reserved"
   final int    floor;    // 1, 2, or 3
   final String type;     // "standard" | "ev" | "disabled"
 
@@ -20,9 +17,6 @@ class ParkingSpot {
     required this.type,
   });
 
-  bool get isAvailable => status == 'available';
-
-  // Helper — is this spot bookable?
   bool get isAvailable => status == 'available';
 
   // Build a ParkingSpot from a JSON map (used when ESP sends data)
@@ -43,18 +37,11 @@ class Reservation {
   final String   lotName;
   final DateTime startTime;
   final DateTime endTime;
-  final String   pin;
-  final double   baseRate;       // lot hourly rate — used by PricingService
-  final double   cost;           // pre-estimated cost at booking time
+  final String   pin;       // 4-digit gate PIN
+  final double   baseRate;  // lot hourly rate — used by PricingService
+  final double   cost;      // pre-estimated cost at booking time
   final DateTime? actualEntryTime; // set when gate opens
   final DateTime? actualExitTime;  // set when user taps Exit
-  final String id;
-  final String spotId;
-  final String lotName;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String pin;       // 4-digit gate PIN
-  final double cost;
 
   const Reservation({
     required this.id,
@@ -69,40 +56,38 @@ class Reservation {
     this.actualExitTime,
   });
 
-  Duration get remaining       => endTime.difference(DateTime.now());
-  bool     get isActive        => !remaining.isNegative;
+  Duration get remaining => endTime.difference(DateTime.now());
+  bool get isActive => !remaining.isNegative;
   DateTime get billingStartTime => actualEntryTime ?? startTime;
 
-  Reservation copyWith({DateTime? actualEntryTime, DateTime? actualExitTime}) {
+  Reservation copyWith({
+    DateTime? actualEntryTime,
+    DateTime? actualExitTime,
+  }) {
     return Reservation(
-      id: id, spotId: spotId, lotName: lotName,
-      startTime: startTime, endTime: endTime,
-      pin: pin, baseRate: baseRate, cost: cost,
+      id: id,
+      spotId: spotId,
+      lotName: lotName,
+      startTime: startTime,
+      endTime: endTime,
+      pin: pin,
+      baseRate: baseRate,
+      cost: cost,
       actualEntryTime: actualEntryTime ?? this.actualEntryTime,
-      actualExitTime:  actualExitTime  ?? this.actualExitTime,
+      actualExitTime: actualExitTime ?? this.actualExitTime,
     );
   }
-    required this.cost,
-  });
-
-  // How many minutes are left until the reservation ends?
-  Duration get remaining => endTime.difference(DateTime.now());
-  bool get isActive      => remaining.isNegative == false;
 
   factory Reservation.fromJson(Map<String, dynamic> json) {
     return Reservation(
-      id:        json['id']       as String,
-      spotId:    json['spot']     as String,
-      lotName:   json['lot']      as String,
-      startTime: DateTime.parse(json['start']   as String),
-      endTime:   DateTime.parse(json['end']     as String),
-      pin:       json['pin']      as String,
-      baseRate:  (json['baseRate'] as num).toDouble(),
-      cost:      (json['cost']    as num).toDouble(),
+      id: json['id'] as String,
+      spotId: json['spot'] as String,
+      lotName: json['lot'] as String,
       startTime: DateTime.parse(json['start'] as String),
-      endTime:   DateTime.parse(json['end']   as String),
-      pin:       json['pin']      as String,
-      cost:      (json['cost'] as num).toDouble(),
+      endTime: DateTime.parse(json['end'] as String),
+      pin: json['pin'] as String,
+      baseRate: (json['baseRate'] as num).toDouble(),
+      cost: (json['cost'] as num).toDouble(),
     );
   }
 }
