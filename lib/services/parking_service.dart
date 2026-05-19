@@ -11,7 +11,6 @@
 //    3. The rest of the app stays exactly the same
 // ════════════════════════════════════════════════════════════════
 
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/reservation.dart';
 
