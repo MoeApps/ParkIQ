@@ -1,0 +1,884 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include <ESP32Servo.h>
+#include <LiquidCrystal_I2C.h>
+#include <Keypad.h>
+#include <Wire.h>
+// =====================================================
+// WIFI ACCESS POINT
+// =====================================================
+const char* WIFI_SSID = "ParkingSystem";
+const char* WIFI_PASSWORD = "12345678";
+
+WebServer server(80);
+
+// =====================================================
+// LCD
+// =====================================================
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// =====================================================
+// IR SENSORS
+// =====================================================
+
+#define ENTRY_IR 12
+#define EXIT_IR 14
+
+#define SLOT1_IR 27
+#define SLOT2_IR 26
+#define SLOT3_IR 25
+#define SLOT4_IR 33
+
+// =====================================================
+// SERVOS
+// =====================================================
+
+#define ENTRY_SERVO_PIN 18
+#define EXIT_SERVO_PIN 19
+
+Servo entryServo;
+Servo exitServo;
+
+// =====================================================
+// LEDS
+// =====================================================
+
+#define GREEN_LED 23
+#define RED_LED 32
+
+// =====================================================
+// KEYPAD 3x3
+// =====================================================
+
+const byte ROWS = 3;
+const byte COLS = 3;
+
+char keys[ROWS][COLS] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'}
+};
+
+byte rowPins[ROWS] = {5, 17, 16};
+byte colPins[COLS] = {4, 15, 13};
+
+Keypad keypad = Keypad(
+  makeKeymap(keys),
+  rowPins,
+  colPins,
+  ROWS,
+  COLS
+);
+
+// =====================================================
+// PARKING CONFIG
+// =====================================================
+
+const float COST_PER_HOUR = 20.0;
+
+const int MAX_SLOTS = 4;
+const int MAX_RESERVATIONS = 10;
+
+// =====================================================
+// SLOT STRUCTURE
+// =====================================================
+
+struct ParkingSlot {
+
+  bool occupied;
+
+  bool reserved;
+
+  int pinCode;
+
+  unsigned long entryTime;
+};
+
+ParkingSlot slots[MAX_SLOTS];
+
+// =====================================================
+// RESERVATIONS
+// =====================================================
+
+struct Reservation {
+
+  bool active;
+
+  String username;
+
+  unsigned long createdAt;
+};
+
+Reservation reservations[MAX_RESERVATIONS];
+
+// =====================================================
+// REVENUE
+// =====================================================
+
+float totalRevenue = 0;
+
+// =====================================================
+// SYSTEM STATE
+// =====================================================
+
+int freeSlots = 4;
+
+bool parkingFull = false;
+
+// =====================================================
+// PENDING ENTRY
+// =====================================================
+
+bool waitingForParking = false;
+
+int pendingPin = -1;
+
+unsigned long pendingStartTime = 0;
+
+// =====================================================
+// UTILITY
+// =====================================================
+
+String systemStatus = "READY";
+
+// =====================================================
+// LCD HELPERS
+// =====================================================
+
+void showMessage(String line1, String line2) {
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+
+  lcd.setCursor(0, 1);
+  lcd.print(line2);
+}
+
+// =====================================================
+// FREE SLOT COUNT
+// =====================================================
+
+int getFreeSlots() {
+
+  int count = 0;
+
+  for (int i = 0; i < MAX_SLOTS; i++) {
+
+    if (!slots[i].occupied &&
+        !slots[i].reserved) {
+
+      count++;
+    }
+  }
+
+  return count;
+}
+
+// =====================================================
+// GENERATE PIN
+// =====================================================
+
+int generatePin() {
+
+  while (true) {
+
+    int pin = random(11, 99);
+
+    int tens = pin / 10;
+    int ones = pin % 10;
+
+    if (tens != 0 && ones != 0)
+      return pin;
+  }
+}
+
+// =====================================================
+// SERVO CONTROL
+// =====================================================
+
+void openEntryGate() {
+
+  entryServo.write(90);
+
+  delay(3000);
+
+  entryServo.write(0);
+}
+
+void openExitGate() {
+
+  exitServo.write(90);
+
+  delay(3000);
+
+  exitServo.write(0);
+}
+
+// =====================================================
+// LED STATUS
+// =====================================================
+
+void updateStatusLEDs() {
+
+  freeSlots = getFreeSlots();
+
+  if (freeSlots == 0) {
+
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+
+    parkingFull = true;
+  }
+  else {
+
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+
+    parkingFull = false;
+  }
+}
+
+// =====================================================
+// SLOT SENSOR
+// =====================================================
+
+bool slotOccupied(int slotIndex) {
+
+  switch (slotIndex) {
+
+    case 0:
+      return digitalRead(SLOT1_IR) == LOW;
+
+    case 1:
+      return digitalRead(SLOT2_IR) == LOW;
+
+    case 2:
+      return digitalRead(SLOT3_IR) == LOW;
+
+    case 3:
+      return digitalRead(SLOT4_IR) == LOW;
+  }
+
+  return false;
+}
+
+// =====================================================
+// FIND FIRST NEWLY OCCUPIED SLOT
+// =====================================================
+
+int detectOccupiedSlot() {
+
+  for (int i = 0; i < MAX_SLOTS; i++) {
+
+    if (slotOccupied(i) && !slots[i].occupied) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+// =====================================================
+// HANDLE ENTRY
+// =====================================================
+
+void handleEntry() {
+
+  updateStatusLEDs();
+
+  if (parkingFull) {
+
+    showMessage("PARKING", "FULL");
+
+    systemStatus = "FULL";
+
+    return;
+  }
+
+  pendingPin = generatePin();
+
+  waitingForParking = true;
+
+  pendingStartTime = millis();
+
+  showMessage("PIN:", String(pendingPin));
+
+  systemStatus = "ENTRY_GRANTED";
+
+  openEntryGate();
+}
+
+// =====================================================
+// ASSIGN SLOT AFTER PARKING
+// =====================================================
+
+void processPendingParking() {
+
+  if (!waitingForParking)
+    return;
+
+  int slot = detectOccupiedSlot();
+
+  if (slot == -1)
+    return;
+
+  slots[slot].occupied = true;
+
+  slots[slot].reserved = false;
+
+  slots[slot].pinCode = pendingPin;
+
+  slots[slot].entryTime = millis();
+
+  waitingForParking = false;
+
+  showMessage("PARKED SLOT", String(slot + 1));
+
+  delay(2000);
+
+  updateStatusLEDs();
+}
+
+// =====================================================
+// FIND SLOT BY PIN
+// =====================================================
+
+int findSlotByPin(int pin) {
+
+  for (int i = 0; i < MAX_SLOTS; i++) {
+
+    if (slots[i].occupied &&
+        slots[i].pinCode == pin) {
+
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+// =====================================================
+// READ PIN FROM KEYPAD
+// =====================================================
+
+int readPin() {
+
+  String pin = "";
+
+  showMessage("ENTER PIN", "");
+
+  while (pin.length() < 2) {
+
+    char key = keypad.getKey();
+
+    if (key) {
+
+      pin += key;
+
+      lcd.setCursor(0, 1);
+      lcd.print(pin);
+    }
+  }
+
+  return pin.toInt();
+}
+
+// =====================================================
+// COST CALCULATION
+// =====================================================
+
+float calculateCost(unsigned long parkedTimeMs) {
+
+  float hours =
+    parkedTimeMs / 3600000.0;
+
+  if (hours < 1.0)
+    hours = 1.0;
+
+  return hours * COST_PER_HOUR;
+}
+
+// =====================================================
+// HANDLE EXIT
+// =====================================================
+
+void handleExit() {
+
+  int pin = readPin();
+
+  int slot = findSlotByPin(pin);
+
+  if (slot == -1) {
+
+    showMessage("INVALID", "PIN");
+
+    delay(2000);
+
+    return;
+  }
+
+  unsigned long duration =
+    millis() - slots[slot].entryTime;
+
+  float cost =
+    calculateCost(duration);
+
+  totalRevenue += cost;
+
+  showMessage("COST", String(cost));
+
+  openExitGate();
+
+  slots[slot].occupied = false;
+  slots[slot].pinCode = 0;
+  slots[slot].entryTime = 0;
+
+  delay(3000);
+
+  updateStatusLEDs();
+}
+
+// =====================================================
+// RESERVATIONS
+// =====================================================
+
+bool addReservation(String user) {
+
+  for (int i = 0; i < MAX_RESERVATIONS; i++) {
+
+    if (!reservations[i].active) {
+
+      reservations[i].active = true;
+
+      reservations[i].username = user;
+
+      reservations[i].createdAt = millis();
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// =====================================================
+
+bool cancelReservation(String user) {
+
+  for (int i = 0; i < MAX_RESERVATIONS; i++) {
+
+    if (reservations[i].active &&
+        reservations[i].username == user) {
+
+      reservations[i].active = false;
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// =====================================================
+
+int reservationCount() {
+
+  int count = 0;
+
+  for (int i = 0; i < MAX_RESERVATIONS; i++) {
+
+    if (reservations[i].active)
+      count++;
+  }
+
+  return count;
+}
+
+// =====================================================
+// API : STATUS
+// =====================================================
+
+void apiStatus() {
+
+  StaticJsonDocument<512> doc;
+
+  doc["status"] = systemStatus;
+  doc["freeSlots"] = getFreeSlots();
+  doc["revenue"] = totalRevenue;
+  doc["reservations"] = reservationCount();
+
+  String response;
+
+  serializeJson(doc, response);
+
+  server.send(
+    200,
+    "application/json",
+    response
+  );
+}
+
+// =====================================================
+// API : SPOTS
+// =====================================================
+
+void apiSpots() {
+
+  StaticJsonDocument<1024> doc;
+
+  JsonArray spots =
+    doc.createNestedArray("spots");
+
+  for (int i = 0; i < MAX_SLOTS; i++) {
+
+    JsonObject spot =
+      spots.createNestedObject();
+
+    spot["slot"] = i + 1;
+    spot["occupied"] = slots[i].occupied;
+    spot["reserved"] = slots[i].reserved;
+  }
+
+  String response;
+
+  serializeJson(doc, response);
+
+  server.send(
+    200,
+    "application/json",
+    response
+  );
+}
+
+// =====================================================
+// API : REVENUE
+// =====================================================
+
+void apiRevenue() {
+
+  StaticJsonDocument<256> doc;
+
+  doc["revenue"] = totalRevenue;
+
+  String response;
+
+  serializeJson(doc, response);
+
+  server.send(
+    200,
+    "application/json",
+    response
+  );
+}
+
+// =====================================================
+// API : RESERVE
+// =====================================================
+
+void apiReserve() {
+
+  String user = "mobile";
+
+  bool ok =
+    addReservation(user);
+
+  if (ok) {
+
+    server.send(
+      200,
+      "text/plain",
+      "Reservation Added"
+    );
+  }
+  else {
+
+    server.send(
+      400,
+      "text/plain",
+      "Reservation Failed"
+    );
+  }
+}
+
+// =====================================================
+// API : CANCEL
+// =====================================================
+
+void apiCancel() {
+
+  String user = "mobile";
+
+  bool ok =
+    cancelReservation(user);
+
+  if (ok) {
+
+    server.send(
+      200,
+      "text/plain",
+      "Reservation Cancelled"
+    );
+  }
+  else {
+
+    server.send(
+      400,
+      "text/plain",
+      "Reservation Not Found"
+    );
+  }
+}
+
+// =====================================================
+// ADMIN OPEN ENTRY
+// =====================================================
+
+void apiOpenEntry() {
+
+  openEntryGate();
+
+  server.send(
+    200,
+    "text/plain",
+    "Entry Opened"
+  );
+}
+
+// =====================================================
+// ADMIN OPEN EXIT
+// =====================================================
+
+void apiOpenExit() {
+
+  openExitGate();
+
+  server.send(
+    200,
+    "text/plain",
+    "Exit Opened"
+  );
+}
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // -----------------------
+  // LCD
+  // -----------------------
+
+  lcd.init();
+  lcd.backlight();
+
+  showMessage(
+    "WELCOME TO",
+    "SMART PARKING"
+  );
+
+  delay(3000);
+
+  // -----------------------
+  // IR SENSORS
+  // -----------------------
+
+  pinMode(ENTRY_IR, INPUT);
+  pinMode(EXIT_IR, INPUT);
+
+  pinMode(SLOT1_IR, INPUT);
+  pinMode(SLOT2_IR, INPUT);
+  pinMode(SLOT3_IR, INPUT);
+  pinMode(SLOT4_IR, INPUT);
+
+  // -----------------------
+  // LEDS
+  // -----------------------
+
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+
+  // -----------------------
+  // SERVOS
+  // -----------------------
+
+  entryServo.attach(
+    ENTRY_SERVO_PIN
+  );
+
+  exitServo.attach(
+    EXIT_SERVO_PIN
+  );
+
+  entryServo.write(0);
+  exitServo.write(0);
+
+  // -----------------------
+  // SLOT INIT
+  // -----------------------
+
+  for (int i = 0;
+       i < MAX_SLOTS;
+       i++) {
+
+    slots[i].occupied = false;
+    slots[i].reserved = false;
+    slots[i].pinCode = 0;
+    slots[i].entryTime = 0;
+  }
+
+  // -----------------------
+  // RESERVATION INIT
+  // -----------------------
+
+  for (int i = 0;
+       i < MAX_RESERVATIONS;
+       i++) {
+
+    reservations[i].active = false;
+  }
+
+  // -----------------------
+  // RANDOM PIN SEED
+  // -----------------------
+
+  randomSeed(
+    micros()
+  );
+
+  // -----------------------
+  // WIFI ACCESS POINT
+  // -----------------------
+
+  WiFi.softAP(
+    WIFI_SSID,
+    WIFI_PASSWORD
+  );
+
+  Serial.println();
+  Serial.println(
+    "HOTSPOT STARTED"
+  );
+
+  Serial.print(
+    "IP: "
+  );
+
+  Serial.println(
+    WiFi.softAPIP()
+  );
+
+  // -----------------------
+  // ROUTES
+  // -----------------------
+
+  server.on(
+    "/status",
+    HTTP_GET,
+    apiStatus
+  );
+
+  server.on(
+    "/spots",
+    HTTP_GET,
+    apiSpots
+  );
+
+  server.on(
+    "/revenue",
+    HTTP_GET,
+    apiRevenue
+  );
+
+  server.on(
+    "/reserve",
+    HTTP_POST,
+    apiReserve
+  );
+
+  server.on(
+    "/cancel",
+    HTTP_POST,
+    apiCancel
+  );
+
+  server.on(
+    "/openEntry",
+    HTTP_POST,
+    apiOpenEntry
+  );
+
+  server.on(
+    "/openExit",
+    HTTP_POST,
+    apiOpenExit
+  );
+
+  server.begin();
+
+  showMessage(
+    "SYSTEM",
+    "READY"
+  );
+}
+
+// =====================================================
+// LOOP
+// =====================================================
+
+void loop() {
+
+  server.handleClient();
+
+  updateStatusLEDs();
+
+  processPendingParking();
+
+  // -----------------------
+  // ENTRY SENSOR
+  // -----------------------
+
+  if (
+    digitalRead(
+      ENTRY_IR
+    ) == LOW
+  ) {
+
+    delay(200);
+
+    handleEntry();
+
+    while (
+      digitalRead(
+        ENTRY_IR
+      ) == LOW
+    );
+  }
+
+  // -----------------------
+  // EXIT SENSOR
+  // -----------------------
+
+  if (
+    digitalRead(
+      EXIT_IR
+    ) == LOW
+  ) {
+
+    delay(200);
+
+    handleExit();
+
+    while (
+      digitalRead(
+        EXIT_IR
+      ) == LOW
+    );
+  }
+}
