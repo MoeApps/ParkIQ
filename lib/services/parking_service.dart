@@ -1,146 +1,352 @@
 // lib/services/parking_service.dart
 //
-// ════════════════════════════════════════════════════════════════
-//  THIS IS THE ONLY FILE YOU NEED TO EDIT WHEN YOU CONNECT THE ESP
+// Hybrid service: Lot 1 (ParkIQ Live Demo) talks to the ESP over WiFi.
+// Lots 2–4 and login/payment stay mock for a richer demo UX.
 //
-//  Right now every method returns fake (mock) data so the app works
-//  without any hardware. When your ESP is ready:
-//
-//    1. Set ESP_BASE_URL to your ESP's IP address
-//    2. Uncomment the real HTTP calls inside each method
-//    3. The rest of the app stays exactly the same
-// ════════════════════════════════════════════════════════════════
+// Phone must be on the ESP hotspot: ParkingSystem / 12345678
+// ESP default IP: http://192.168.4.1
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/reservation.dart';
 
-const String ESP_BASE_URL = 'http://192.168.1.100';
+/// ESP32 softAP address when phone joins "ParkingSystem" WiFi.
+const String ESP_BASE_URL = 'http://192.168.4.1';
+
+/// The one lot wired to real hardware (4 physical slots).
+const int HARDWARE_LOT_ID = 1;
+
+/// Matches firmware COST_PER_HOUR in ParkIQ_ESP.ino
+const double ESP_HOURLY_RATE = 20.0;
+
+const Duration _espTimeout = Duration(seconds: 5);
 
 class ParkingService {
   static final ParkingService instance = ParkingService._();
   ParkingService._();
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  bool _espOnline = false;
+  bool get espOnline => _espOnline;
+
+  // ── Auth (mock — no /login on ESP) ─────────────────────────────────────────
   Future<bool> login(String email, String password) async {
-    await Future.delayed(const Duration(seconds: 1));
-    // REAL: POST $ESP_BASE_URL/login  { email, password } → 200 or 401
+    await Future.delayed(const Duration(milliseconds: 800));
     return email.isNotEmpty && password.length >= 4;
   }
 
-  // ── Lots ────────────────────────────────────────────────────────────────────
+  // ── Lots ───────────────────────────────────────────────────────────────────
   Future<List<ParkingLot>> getLots() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    // REAL: GET $ESP_BASE_URL/lots
-    return const [
-      ParkingLot(id: 1, name: 'Downtown Lot A',  address: '15 Tahrir Square',           available: 18, total: 48,  distance: '0.3 km', price: 5),
-      ParkingLot(id: 2, name: 'Airport Lot B',   address: 'Cairo International Airport', available: 34, total: 120, distance: '1.2 km', price: 8),
-      ParkingLot(id: 3, name: 'Mall Lot C',      address: 'Cairo Festival City',         available: 7,  total: 60,  distance: '2.4 km', price: 4),
-      ParkingLot(id: 4, name: 'Hospital Lot D',  address: 'Ain Shams Medical Center',    available: 22, total: 40,  distance: '0.8 km', price: 3),
+    final hardwareLot = await _fetchHardwareLot();
+    return [
+      hardwareLot,
+      const ParkingLot(
+        id: 2,
+        name: 'Airport Lot B',
+        address: 'Cairo International Airport',
+        available: 34,
+        total: 120,
+        distance: '1.2 km',
+        price: 8,
+      ),
+      const ParkingLot(
+        id: 3,
+        name: 'Mall Lot C',
+        address: 'Cairo Festival City',
+        available: 7,
+        total: 60,
+        distance: '2.4 km',
+        price: 4,
+      ),
+      const ParkingLot(
+        id: 4,
+        name: 'Hospital Lot D',
+        address: 'Ain Shams Medical Center',
+        available: 22,
+        total: 40,
+        distance: '0.8 km',
+        price: 3,
+      ),
     ];
   }
 
-  // ── Spots ───────────────────────────────────────────────────────────────────
-  Future<List<ParkingSpot>> getSpots({int lotId = 1}) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    // REAL: GET $ESP_BASE_URL/spots?lot=$lotId
-    final statuses = ['available','available','available','occupied','reserved','available','occupied','available'];
+  Future<ParkingLot> _fetchHardwareLot() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$ESP_BASE_URL/status'))
+          .timeout(_espTimeout);
+
+      if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
+
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      _espOnline = true;
+
+      return ParkingLot(
+        id: HARDWARE_LOT_ID,
+        name: 'ParkIQ Live Demo',
+        address: 'ESP Hardware — connect to ParkingSystem WiFi',
+        available: (data['freeSlots'] as num?)?.toInt() ?? 0,
+        total: 4,
+        distance: 'On-site',
+        price: ESP_HOURLY_RATE,
+        isHardwareLot: true,
+        espOnline: true,
+      );
+    } catch (_) {
+      _espOnline = false;
+      return const ParkingLot(
+        id: HARDWARE_LOT_ID,
+        name: 'ParkIQ Live Demo',
+        address: 'ESP offline — join ParkingSystem WiFi',
+        available: 0,
+        total: 4,
+        distance: 'On-site',
+        price: ESP_HOURLY_RATE,
+        isHardwareLot: true,
+        espOnline: false,
+      );
+    }
+  }
+
+  // ── Spots ──────────────────────────────────────────────────────────────────
+  Future<List<ParkingSpot>> getSpots({required int lotId}) async {
+    if (lotId == HARDWARE_LOT_ID) {
+      return _fetchHardwareSpots();
+    }
+    return _mockSpots();
+  }
+
+  Future<List<ParkingSpot>> _fetchHardwareSpots() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$ESP_BASE_URL/spots'))
+          .timeout(_espTimeout);
+
+      if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
+
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final spots = data['spots'] as List<dynamic>;
+
+      _espOnline = true;
+
+      return spots.map((raw) {
+        final s = raw as Map<String, dynamic>;
+        final occupied = s['occupied'] as bool? ?? false;
+        final reserved = s['reserved'] as bool? ?? false;
+        final slot = (s['slot'] as num).toInt();
+
+        return ParkingSpot(
+          id: '$slot',
+          status: occupied
+              ? 'occupied'
+              : reserved
+                  ? 'reserved'
+                  : 'available',
+          floor: 1,
+          type: 'standard',
+        );
+      }).toList();
+    } catch (_) {
+      _espOnline = false;
+      rethrow;
+    }
+  }
+
+  List<ParkingSpot> _mockSpots() {
+    const statuses = [
+      'available',
+      'available',
+      'available',
+      'occupied',
+      'reserved',
+      'available',
+      'occupied',
+      'available',
+    ];
     return List.generate(24, (i) {
       final letter = String.fromCharCode(65 + (i ~/ 8));
-      final num    = (i % 8) + 1;
+      final num = (i % 8) + 1;
       return ParkingSpot(
-        id:     '$letter$num',
+        id: '$letter$num',
         status: statuses[i % 8],
-        floor:  (i ~/ 8) + 1,
-        type:   i % 6 == 0 ? 'disabled' : i % 7 == 0 ? 'ev' : 'standard',
+        floor: (i ~/ 8) + 1,
+        type: i % 6 == 0
+            ? 'disabled'
+            : i % 7 == 0
+                ? 'ev'
+                : 'standard',
       );
     });
   }
 
-  // ── Reserve ─────────────────────────────────────────────────────────────────
+  // ── Reserve ────────────────────────────────────────────────────────────────
   Future<Reservation> createReservation({
-    required String   lotName,
-    required String   spotId,
+    required String lotName,
+    required String spotId,
     required DateTime startTime,
-    required int      durationHours,
-    required double   hourlyRate,
+    required int durationHours,
+    required double hourlyRate,
+    required bool isHardwareLot,
   }) async {
-    await Future.delayed(const Duration(seconds: 1));
-    // REAL: POST $ESP_BASE_URL/reserve  { spot, start, duration }
-    return Reservation(
-      id:        'R${DateTime.now().millisecondsSinceEpoch}',
-      spotId:    spotId,
-      lotName:   lotName,
+    if (isHardwareLot) {
+      return _createHardwareReservation(
+        lotName: lotName,
+        spotId: spotId,
+        startTime: startTime,
+        durationHours: durationHours,
+        hourlyRate: hourlyRate,
+      );
+    }
+    return _createMockReservation(
+      lotName: lotName,
+      spotId: spotId,
       startTime: startTime,
-      endTime:   startTime.add(Duration(hours: durationHours)),
-      pin:       _generatePin(),
-      baseRate:  hourlyRate,
-      cost:      hourlyRate * durationHours,
-      // Simulate the car already entered for demo purposes
+      durationHours: durationHours,
+      hourlyRate: hourlyRate,
+    );
+  }
+
+  Future<Reservation> _createHardwareReservation({
+    required String lotName,
+    required String spotId,
+    required DateTime startTime,
+    required int durationHours,
+    required double hourlyRate,
+  }) async {
+    final slotNum = int.tryParse(spotId);
+    if (slotNum == null || slotNum < 1 || slotNum > 4) {
+      throw Exception('Invalid slot for hardware lot');
+    }
+
+    final res = await http
+        .post(
+          Uri.parse('$ESP_BASE_URL/reserve'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'slot': slotNum,
+            'user': 'mobile',
+          }),
+        )
+        .timeout(_espTimeout);
+
+    if (res.statusCode != 200) {
+      final body = res.body;
+      throw Exception(_parseEspError(body) ?? 'Reservation failed (${res.statusCode})');
+    }
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final pin = (data['pin'] as num).toInt().toString();
+    final slot = (data['slot'] as num).toInt();
+
+    _espOnline = true;
+
+    return Reservation(
+      id: 'R${DateTime.now().millisecondsSinceEpoch}',
+      spotId: '$slot',
+      lotName: lotName,
+      startTime: startTime,
+      endTime: startTime.add(Duration(hours: durationHours)),
+      pin: pin,
+      baseRate: hourlyRate,
+      cost: hourlyRate * durationHours,
+      isHardwareReservation: true,
+    );
+  }
+
+  Future<Reservation> _createMockReservation({
+    required String lotName,
+    required String spotId,
+    required DateTime startTime,
+    required int durationHours,
+    required double hourlyRate,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 600));
+    return Reservation(
+      id: 'R${DateTime.now().millisecondsSinceEpoch}',
+      spotId: spotId,
+      lotName: lotName,
+      startTime: startTime,
+      endTime: startTime.add(Duration(hours: durationHours)),
+      pin: _generateMockPin(),
+      baseRate: hourlyRate,
+      cost: hourlyRate * durationHours,
       actualEntryTime: startTime,
     );
   }
 
-  // ── Gate ────────────────────────────────────────────────────────────────────
-  Future<bool> triggerGate(String action) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    // REAL: POST $ESP_BASE_URL/gate  { action: "open" | "close" }
-    return true;
+  /// Cancel a hardware reservation on the ESP (optional — for future UI).
+  Future<bool> cancelHardwareReservation({int? slot, String user = 'mobile'}) async {
+    try {
+      final body = slot != null ? {'slot': slot} : {'user': user};
+      final res = await http
+          .post(
+            Uri.parse('$ESP_BASE_URL/cancel'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_espTimeout);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
-  // ── Payment ─────────────────────────────────────────────────────────────────
-  /// Processes payment. Currently a dummy — always succeeds.
-  ///
-  /// TO INTEGRATE STRIPE:
-  ///   1. Add stripe_sdk to pubspec.yaml
-  ///   2. Call your backend to create a PaymentIntent
-  ///   3. Use Stripe.instance.confirmPayment(...)
-  ///   4. Replace the fake return below with the real result
-  ///
-  /// TO INTEGRATE PAYPAL:
-  ///   1. Add flutter_paypal_payment to pubspec.yaml
-  ///   2. Use PaypalPayment widget with your credentials
+  // ── Gate ───────────────────────────────────────────────────────────────────
+  Future<bool> triggerGate(String action) async {
+    final path = action == 'exit' ? '/openExit' : '/openEntry';
+    try {
+      final res = await http
+          .post(Uri.parse('$ESP_BASE_URL$path'))
+          .timeout(_espTimeout);
+      _espOnline = res.statusCode == 200;
+      return res.statusCode == 200;
+    } catch (_) {
+      _espOnline = false;
+      return false;
+    }
+  }
+
+  // ── Live status poll (for dashboard refresh) ───────────────────────────────
+  Future<Map<String, dynamic>?> fetchEspStatus() async {
+    try {
+      final res = await http
+          .get(Uri.parse('$ESP_BASE_URL/status'))
+          .timeout(_espTimeout);
+      if (res.statusCode != 200) return null;
+      _espOnline = true;
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      _espOnline = false;
+      return null;
+    }
+  }
+
+  // ── Payment (mock — not on ESP) ────────────────────────────────────────────
   Future<PaymentResult> processPayment({
-    required double        amount,
+    required double amount,
     required PaymentMethod method,
-    required String        reservationId,
+    required String reservationId,
   }) async {
-    // Simulate network delay (real payment takes a moment too)
-    await Future.delayed(const Duration(seconds: 2));
-
-    // ── REAL Stripe example (uncomment when ready) ──────────────────────────
-    // if (method == PaymentMethod.card) {
-    //   final response = await http.post(
-    //     Uri.parse('$ESP_BASE_URL/payment/intent'),
-    //     headers: {'Content-Type': 'application/json'},
-    //     body: jsonEncode({'amount': (amount * 100).round(), 'currency': 'usd'}),
-    //   );
-    //   final clientSecret = jsonDecode(response.body)['client_secret'];
-    //   final result = await Stripe.instance.confirmPayment(
-    //     paymentIntentClientSecret: clientSecret,
-    //     data: const PaymentMethodParams.card(paymentMethodData: PaymentMethodData()),
-    //   );
-    //   return PaymentResult(
-    //     success:    result.status == PaymentIntentsStatus.Succeeded,
-    //     method:     method,
-    //     amountPaid: amount,
-    //     receiptId:  'STR-${result.id}',
-    //     paidAt:     DateTime.now(),
-    //   );
-    // }
-
-    // Mock: always succeeds
+    await Future.delayed(const Duration(seconds: 1));
     return PaymentResult(
-      success:    true,
-      method:     method,
+      success: true,
+      method: method,
       amountPaid: amount,
-      receiptId:  'RCP-${DateTime.now().millisecondsSinceEpoch}',
-      paidAt:     DateTime.now(),
+      receiptId: 'RCP-${DateTime.now().millisecondsSinceEpoch}',
+      paidAt: DateTime.now(),
     );
   }
 
-  String _generatePin() {
+  String _generateMockPin() {
     final n = DateTime.now().millisecondsSinceEpoch % 9000 + 1000;
     return n.toString();
+  }
+
+  String? _parseEspError(String body) {
+    try {
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return data['error'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 }

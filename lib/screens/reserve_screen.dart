@@ -54,14 +54,27 @@ class _ReserveScreenState extends State<ReserveScreen> {
   Future<void> _loadSpots() async {
     if (_selectedLot == null) return;
     setState(() { _isLoading = true; _spots = null; });
-    final spots = await ParkingService.instance.getSpots(lotId: _selectedLot!.id);
-    if (mounted) setState(() { _spots = spots; _isLoading = false; });
+    try {
+      final spots = await ParkingService.instance.getSpots(lotId: _selectedLot!.id);
+      if (mounted) setState(() { _spots = spots; _isLoading = false; });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnack(_selectedLot!.isHardwareLot
+            ? 'Could not reach ESP. Join the ParkingSystem WiFi and try again.'
+            : 'Failed to load spots.');
+      }
+    }
   }
 
   // ── Step navigation ────────────────────────────────────────────────────────
   void _goToStep2() {
     if (_selectedLot == null) {
       _showSnack('Please select a parking lot first.');
+      return;
+    }
+    if (_selectedLot!.isHardwareLot && !_selectedLot!.espOnline) {
+      _showSnack('ESP is offline. Connect your phone to ParkingSystem WiFi first.');
       return;
     }
     _loadSpots();
@@ -85,18 +98,24 @@ class _ReserveScreenState extends State<ReserveScreen> {
       _time.hour, _time.minute,
     );
 
-    final reservation = await ParkingService.instance.createReservation(
-      lotName:      _selectedLot!.name,
-      spotId:       _selectedSpot!.id,
-      startTime:    startTime,
-      durationHours: _duration,
-      hourlyRate:   _selectedLot!.price,
-    );
+    try {
+      final reservation = await ParkingService.instance.createReservation(
+        lotName:       _selectedLot!.name,
+        spotId:        _selectedSpot!.id,
+        startTime:     startTime,
+        durationHours: _duration,
+        hourlyRate:    _selectedLot!.price,
+        isHardwareLot: _selectedLot!.isHardwareLot,
+      );
 
-    if (!mounted) return;
-
-    // Return the reservation to DashboardScreen
-    Navigator.pop(context, reservation);
+      if (!mounted) return;
+      Navigator.pop(context, reservation);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnack(e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -190,6 +209,7 @@ class _ReserveScreenState extends State<ReserveScreen> {
                     duration:   _duration,
                     totalCost:  _totalCost,
                     isLoading:  _isLoading,
+                    isHardware: _selectedLot!.isHardwareLot,
                   ),
               },
             ),
@@ -410,8 +430,19 @@ class _LotOption extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(lot.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(lot.name,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 14)),
+                        ),
+                        if (lot.isHardwareLot) ...[
+                          const SizedBox(width: 8),
+                          _HardwareBadge(online: lot.espOnline),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text('${lot.address}  ·  ${lot.distance}',
                         style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
@@ -575,11 +606,12 @@ class _Step3Body extends StatelessWidget {
   final int         duration;
   final double      totalCost;
   final bool        isLoading;
+  final bool        isHardware;
 
   const _Step3Body({
     required this.lot, required this.spot, required this.date,
     required this.time, required this.duration, required this.totalCost,
-    required this.isLoading,
+    required this.isLoading, required this.isHardware,
   });
 
   @override
@@ -658,14 +690,17 @@ class _Step3Body extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border:       Border.all(color: AppColors.cyan.withOpacity(0.2)),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.info_outline, color: AppColors.cyan, size: 16),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'A 4-digit PIN and QR code will be generated after confirming. '
-                  'Use them at the gate.',
+                  isHardware
+                      ? 'A 2-digit PIN will be assigned by the ESP. At the gate, '
+                        'press 2 on the keypad and enter your PIN to enter.'
+                      : 'A 4-digit PIN and QR code will be generated after confirming. '
+                        'Use them at the gate (demo lot — no physical hardware).',
                   style: TextStyle(color: AppColors.cyan, fontSize: 12, height: 1.5),
                 ),
               ),
@@ -673,6 +708,33 @@ class _Step3Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HardwareBadge extends StatelessWidget {
+  final bool online;
+  const _HardwareBadge({required this.online});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = online ? AppColors.green : AppColors.red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        online ? 'LIVE' : 'OFFLINE',
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 }

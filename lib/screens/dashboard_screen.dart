@@ -25,6 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<ParkingLot>? _lots;          // null = still loading
   Reservation?      _activeRes;     // the user's current reservation (if any)
   bool              _lotsError = false;
+  bool              _espOnline = false;
 
   @override
   void initState() {
@@ -35,7 +36,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadData() async {
     try {
       final lots = await ParkingService.instance.getLots();
-      if (mounted) setState(() => _lots = lots);
+      if (mounted) {
+        setState(() {
+          _lots = lots;
+          _espOnline = ParkingService.instance.espOnline;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _lotsError = true);
     }
@@ -70,10 +76,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
-                const LiveDot(),
+                LiveDot(color: _espOnline ? AppColors.green : AppColors.textMuted),
                 const SizedBox(width: 6),
-                const Text('Live', style: TextStyle(
-                    color: AppColors.textSecond, fontSize: 12)),
+                Text(
+                  _espOnline ? 'ESP Live' : 'ESP Offline',
+                  style: TextStyle(
+                    color: _espOnline ? AppColors.green : AppColors.textMuted,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),
@@ -328,9 +339,40 @@ class _LotCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(lot.name,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                      overflow: TextOverflow.ellipsis),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(lot.name,
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                      if (lot.isHardwareLot) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (lot.espOnline ? AppColors.green : AppColors.red)
+                                .withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: (lot.espOnline ? AppColors.green : AppColors.red)
+                                  .withOpacity(0.4),
+                            ),
+                          ),
+                          child: Text(
+                            lot.espOnline ? 'LIVE' : 'OFFLINE',
+                            style: TextStyle(
+                              color: lot.espOnline ? AppColors.green : AppColors.red,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

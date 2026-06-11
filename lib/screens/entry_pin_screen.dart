@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/shared_widgets.dart';
 import '../models/reservation.dart';
+import '../services/parking_service.dart';
 
 class EntryPinScreen extends StatefulWidget {
   final Reservation reservation;
@@ -71,6 +72,7 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
   @override
   Widget build(BuildContext context) {
     final res = widget.reservation;
+    final isHardware = res.isHardwareReservation;
 
     return Scaffold(
       appBar: AppBar(
@@ -91,7 +93,7 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
         child: Column(
           children: [
             // ── Gate status banner ─────────────────────────────────────────
-            _GateStatusBanner(isExpired: _isExpired),
+            _GateStatusBanner(isExpired: _isExpired, isHardware: isHardware),
 
             const SizedBox(height: 20),
 
@@ -116,7 +118,9 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
                   Text(
                     _isExpired
                         ? 'This PIN has expired'
-                        : 'Enter this PIN at the gate keypad',
+                        : isHardware
+                            ? 'At the gate: press 2, then enter this PIN on the keypad'
+                            : 'Enter this PIN at the gate keypad',
                     style: TextStyle(
                       color:    _isExpired ? AppColors.red : AppColors.textMuted,
                       fontSize: 12,
@@ -128,8 +132,8 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
 
             const SizedBox(height: 16),
 
-            // ── QR code ────────────────────────────────────────────────────
-            AppCard(
+            // ── QR code (demo lots — ESP uses physical keypad) ─────────────
+            if (!isHardware) AppCard(
               child: Column(
                 children: [
                   const Text('Scan at Gate',
@@ -171,7 +175,30 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            if (!isHardware) const SizedBox(height: 16),
+
+            if (isHardware)
+              AppCard(
+                child: Row(
+                  children: [
+                    const Icon(Icons.sensors, color: AppColors.cyan, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Exit: drive to the exit sensor and enter this PIN '
+                        'on the physical keypad. Billing is handled by the ESP.',
+                        style: const TextStyle(
+                          color: AppColors.textSecond,
+                          fontSize: 12,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            if (isHardware) const SizedBox(height: 16),
 
             // ── Countdown timer ────────────────────────────────────────────
             AppCard(
@@ -242,30 +269,33 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
 
             // ── Bottom actions ─────────────────────────────────────────────
             if (!_isExpired) ...[
-              OutlinedButton.icon(
-                onPressed: () {
-                  // TODO: call ParkingService.instance.triggerGate('open')
-                  // when connected to ESP
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Gate open command sent!'),
-                      backgroundColor: AppColors.surface,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                },
-                icon:  const Icon(Icons.lock_open_rounded,
-                    color: AppColors.green),
-                label: const Text('Request Gate Open',
-                    style: TextStyle(color: AppColors.green)),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  side:   const BorderSide(color: AppColors.green),
-                  shape:  RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              if (isHardware)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final ok = await ParkingService.instance.triggerGate('open');
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(ok
+                            ? 'Entry gate open command sent to ESP'
+                            : 'Could not reach ESP. Check ParkingSystem WiFi.'),
+                        backgroundColor: AppColors.surface,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.lock_open_rounded,
+                      color: AppColors.green),
+                  label: const Text('Override: Open Entry Gate',
+                      style: TextStyle(color: AppColors.green)),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                    side: const BorderSide(color: AppColors.green),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
+              if (isHardware) const SizedBox(height: 12),
             ],
 
             TextButton.icon(
@@ -290,7 +320,8 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
 // ── Gate Status Banner ────────────────────────────────────────────────────────
 class _GateStatusBanner extends StatelessWidget {
   final bool isExpired;
-  const _GateStatusBanner({required this.isExpired});
+  final bool isHardware;
+  const _GateStatusBanner({required this.isExpired, this.isHardware = false});
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +330,9 @@ class _GateStatusBanner extends StatelessWidget {
     final label   = isExpired ? 'Reservation Expired' : 'Entry Approved';
     final subtext = isExpired
         ? 'This reservation is no longer valid.'
-        : 'Your reservation is active. Show QR or PIN at the gate.';
+        : isHardware
+            ? 'Reserved on live hardware. Use the physical gate keypad to enter.'
+            : 'Your reservation is active. Show QR or PIN at the gate.';
 
     return Container(
       width:   double.infinity,
