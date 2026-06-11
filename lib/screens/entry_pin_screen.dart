@@ -178,16 +178,16 @@ class _EntryPinScreenState extends State<EntryPinScreen> {
             if (!isHardware) const SizedBox(height: 16),
 
             if (isHardware)
-              AppCard(
+              const AppCard(
                 child: Row(
                   children: [
-                    const Icon(Icons.sensors, color: AppColors.cyan, size: 20),
-                    const SizedBox(width: 12),
+                    Icon(Icons.sensors, color: AppColors.cyan, size: 20),
+                    SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'Exit: drive to the exit sensor and enter this PIN '
                         'on the physical keypad. Billing is handled by the ESP.',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.textSecond,
                           fontSize: 12,
                           height: 1.5,
@@ -338,9 +338,9 @@ class _GateStatusBanner extends StatelessWidget {
       width:   double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color:        color.withOpacity(0.07),
+        color:        color.withValues(alpha:0.07),
         borderRadius: BorderRadius.circular(16),
-        border:       Border.all(color: color.withOpacity(0.3)),
+        border:       Border.all(color: color.withValues(alpha:0.3)),
       ),
       child: Column(
         children: [
@@ -379,9 +379,9 @@ class _PinDigitBox extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 6),
       width:  56, height: 68,
       decoration: BoxDecoration(
-        color:        color.withOpacity(0.08),
+        color:        color.withValues(alpha:0.08),
         borderRadius: BorderRadius.circular(10),
-        border:       Border.all(color: color.withOpacity(0.4), width: 1.5),
+        border:       Border.all(color: color.withValues(alpha:0.4), width: 1.5),
       ),
       child: Center(
         child: Text(

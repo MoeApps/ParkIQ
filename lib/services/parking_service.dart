@@ -11,13 +11,13 @@ import 'package:http/http.dart' as http;
 import '../models/reservation.dart';
 
 /// ESP32 softAP address when phone joins "ParkingSystem" WiFi.
-const String ESP_BASE_URL = 'http://192.168.4.1';
+const String espBaseUrl = 'http://192.168.4.1';
 
 /// The one lot wired to real hardware (4 physical slots).
-const int HARDWARE_LOT_ID = 1;
+const int hardwareLotId = 1;
 
 /// Matches firmware COST_PER_HOUR in ParkIQ_ESP.ino
-const double ESP_HOURLY_RATE = 20.0;
+const double espHourlyRate = 20.0;
 
 const Duration _espTimeout = Duration(seconds: 5);
 
@@ -72,7 +72,7 @@ class ParkingService {
   Future<ParkingLot> _fetchHardwareLot() async {
     try {
       final res = await http
-          .get(Uri.parse('$ESP_BASE_URL/status'))
+          .get(Uri.parse('$espBaseUrl/status'))
           .timeout(_espTimeout);
 
       if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
@@ -81,26 +81,26 @@ class ParkingService {
       _espOnline = true;
 
       return ParkingLot(
-        id: HARDWARE_LOT_ID,
+        id: hardwareLotId,
         name: 'ParkIQ Live Demo',
         address: 'ESP Hardware — connect to ParkingSystem WiFi',
         available: (data['freeSlots'] as num?)?.toInt() ?? 0,
         total: 4,
         distance: 'On-site',
-        price: ESP_HOURLY_RATE,
+        price: espHourlyRate,
         isHardwareLot: true,
         espOnline: true,
       );
     } catch (_) {
       _espOnline = false;
       return const ParkingLot(
-        id: HARDWARE_LOT_ID,
+        id: hardwareLotId,
         name: 'ParkIQ Live Demo',
         address: 'ESP offline — join ParkingSystem WiFi',
         available: 0,
         total: 4,
         distance: 'On-site',
-        price: ESP_HOURLY_RATE,
+        price: espHourlyRate,
         isHardwareLot: true,
         espOnline: false,
       );
@@ -109,7 +109,7 @@ class ParkingService {
 
   // ── Spots ──────────────────────────────────────────────────────────────────
   Future<List<ParkingSpot>> getSpots({required int lotId}) async {
-    if (lotId == HARDWARE_LOT_ID) {
+    if (lotId == hardwareLotId) {
       return _fetchHardwareSpots();
     }
     return _mockSpots();
@@ -118,7 +118,7 @@ class ParkingService {
   Future<List<ParkingSpot>> _fetchHardwareSpots() async {
     try {
       final res = await http
-          .get(Uri.parse('$ESP_BASE_URL/spots'))
+          .get(Uri.parse('$espBaseUrl/spots'))
           .timeout(_espTimeout);
 
       if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
@@ -219,7 +219,7 @@ class ParkingService {
 
     final res = await http
         .post(
-          Uri.parse('$ESP_BASE_URL/reserve'),
+          Uri.parse('$espBaseUrl/reserve'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'slot': slotNum,
@@ -279,7 +279,7 @@ class ParkingService {
       final body = slot != null ? {'slot': slot} : {'user': user};
       final res = await http
           .post(
-            Uri.parse('$ESP_BASE_URL/cancel'),
+            Uri.parse('$espBaseUrl/cancel'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )
@@ -295,7 +295,7 @@ class ParkingService {
     final path = action == 'exit' ? '/openExit' : '/openEntry';
     try {
       final res = await http
-          .post(Uri.parse('$ESP_BASE_URL$path'))
+          .post(Uri.parse('$espBaseUrl$path'))
           .timeout(_espTimeout);
       _espOnline = res.statusCode == 200;
       return res.statusCode == 200;
@@ -309,7 +309,7 @@ class ParkingService {
   Future<Map<String, dynamic>?> fetchEspStatus() async {
     try {
       final res = await http
-          .get(Uri.parse('$ESP_BASE_URL/status'))
+          .get(Uri.parse('$espBaseUrl/status'))
           .timeout(_espTimeout);
       if (res.statusCode != 200) return null;
       _espOnline = true;

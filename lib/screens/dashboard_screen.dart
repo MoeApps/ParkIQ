@@ -206,12 +206,12 @@ class _ActiveReservationBanner extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.cyan.withOpacity(0.1),
-            AppColors.teal.withOpacity(0.06),
+            AppColors.cyan.withValues(alpha:0.1),
+            AppColors.teal.withValues(alpha:0.06),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
+        border: Border.all(color: AppColors.cyan.withValues(alpha:0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,11 +354,11 @@ class _LotCard extends StatelessWidget {
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: (lot.espOnline ? AppColors.green : AppColors.red)
-                                .withOpacity(0.12),
+                                .withValues(alpha:0.12),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
                               color: (lot.espOnline ? AppColors.green : AppColors.red)
-                                  .withOpacity(0.4),
+                                  .withValues(alpha:0.4),
                             ),
                           ),
                           child: Text(
@@ -377,7 +377,7 @@ class _LotCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color:        AppColors.teal.withOpacity(0.1),
+                    color:        AppColors.teal.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text('\$${lot.price}/hr',

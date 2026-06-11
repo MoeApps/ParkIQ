@@ -78,11 +78,11 @@ class StatusBadge extends StatelessWidget {
   const StatusBadge(this.status, {super.key});
 
   Color get _bgColor => switch (status.toLowerCase()) {
-    'available' || 'active' || 'approved' => AppColors.green.withOpacity(0.15),
-    'occupied'  || 'denied'               => AppColors.red.withOpacity(0.15),
-    'reserved'  || 'pending'              => AppColors.amber.withOpacity(0.15),
-    'ev'                                  => AppColors.cyan.withOpacity(0.12),
-    _                                     => AppColors.textMuted.withOpacity(0.15),
+    'available' || 'active' || 'approved' => AppColors.green.withValues(alpha:0.15),
+    'occupied'  || 'denied'               => AppColors.red.withValues(alpha:0.15),
+    'reserved'  || 'pending'              => AppColors.amber.withValues(alpha:0.15),
+    'ev'                                  => AppColors.cyan.withValues(alpha:0.12),
+    _                                     => AppColors.textMuted.withValues(alpha:0.15),
   };
 
   Color get _textColor => switch (status.toLowerCase()) {
@@ -100,7 +100,7 @@ class StatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color:        _bgColor,
         borderRadius: BorderRadius.circular(50),
-        border:       Border.all(color: _textColor.withOpacity(0.3)),
+        border:       Border.all(color: _textColor.withValues(alpha:0.3)),
       ),
       child: Text(
         status.toUpperCase(),
@@ -240,9 +240,9 @@ class _LiveDotState extends State<LiveDot> with SingleTickerProviderStateMixin {
       builder: (_, __) => Container(
         width: 8, height: 8,
         decoration: BoxDecoration(
-          color:     widget.color.withOpacity(_anim.value),
+          color:     widget.color.withValues(alpha:_anim.value),
           shape:     BoxShape.circle,
-          boxShadow: [BoxShadow(color: widget.color.withOpacity(0.5), blurRadius: 6)],
+          boxShadow: [BoxShadow(color: widget.color.withValues(alpha:0.5), blurRadius: 6)],
         ),
       ),
     );

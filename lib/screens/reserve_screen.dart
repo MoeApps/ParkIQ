@@ -310,9 +310,9 @@ class _Step1Body extends StatelessWidget {
                 inactiveColor: AppColors.surfaceAlt,
                 onChanged:    (v) => onDurationChanged(v.round()),
               ),
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
+                children: [
                   Text('1h', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                   Text('12h', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                 ],
@@ -398,7 +398,7 @@ class _LotOption extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color:        isSelected
-                ? AppColors.cyan.withOpacity(0.08)
+                ? AppColors.cyan.withValues(alpha:0.08)
                 : AppColors.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -493,9 +493,9 @@ class _Step2Body extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       children: [
         // Legend
-        Wrap(
+        const Wrap(
           spacing: 12, runSpacing: 8,
-          children: const [
+          children: [
             _LegendItem(color: AppColors.green, label: 'Available'),
             _LegendItem(color: AppColors.red,   label: 'Occupied'),
             _LegendItem(color: AppColors.amber,  label: 'Reserved'),
@@ -534,13 +534,13 @@ class _Step2Body extends StatelessWidget {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       decoration: BoxDecoration(
-                        color:        color.withOpacity(isSelected ? 0.25 : 0.12),
+                        color:        color.withValues(alpha:isSelected ? 0.25 : 0.12),
                         borderRadius: BorderRadius.circular(8),
                         border:       Border.all(
-                            color: color.withOpacity(isSelected ? 1 : 0.4),
+                            color: color.withValues(alpha:isSelected ? 1 : 0.4),
                             width: isSelected ? 1.5 : 1),
                         boxShadow: isSelected
-                            ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8)]
+                            ? [BoxShadow(color: color.withValues(alpha:0.3), blurRadius: 8)]
                             : null,
                       ),
                       child: Column(
@@ -583,9 +583,9 @@ class _LegendItem extends StatelessWidget {
         Container(
           width: 12, height: 12,
           decoration: BoxDecoration(
-            color:        color.withOpacity(0.3),
+            color:        color.withValues(alpha:0.3),
             borderRadius: BorderRadius.circular(3),
-            border:       Border.all(color: color.withOpacity(0.7)),
+            border:       Border.all(color: color.withValues(alpha:0.7)),
           ),
         ),
         const SizedBox(width: 5),
@@ -617,7 +617,7 @@ class _Step3Body extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final subtotal    = totalCost;
-    final bookingFee  = 1.50;
+    const bookingFee = 1.50;
     final grandTotal  = subtotal + bookingFee;
 
     return ListView(
@@ -686,14 +686,14 @@ class _Step3Body extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color:        AppColors.cyan.withOpacity(0.06),
+            color:        AppColors.cyan.withValues(alpha:0.06),
             borderRadius: BorderRadius.circular(12),
-            border:       Border.all(color: AppColors.cyan.withOpacity(0.2)),
+            border:       Border.all(color: AppColors.cyan.withValues(alpha:0.2)),
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: AppColors.cyan, size: 16),
-              SizedBox(width: 10),
+              const Icon(Icons.info_outline, color: AppColors.cyan, size: 16),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   isHardware
@@ -701,7 +701,7 @@ class _Step3Body extends StatelessWidget {
                         'press 2 on the keypad and enter your PIN to enter.'
                       : 'A 4-digit PIN and QR code will be generated after confirming. '
                         'Use them at the gate (demo lot — no physical hardware).',
-                  style: TextStyle(color: AppColors.cyan, fontSize: 12, height: 1.5),
+                  style: const TextStyle(color: AppColors.cyan, fontSize: 12, height: 1.5),
                 ),
               ),
             ],
@@ -722,9 +722,9 @@ class _HardwareBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha:0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha:0.4)),
       ),
       child: Text(
         online ? 'LIVE' : 'OFFLINE',
